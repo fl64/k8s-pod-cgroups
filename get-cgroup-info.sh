@@ -21,7 +21,7 @@ proberExec() {
   kubectl -n "${PROBER_NS}" exec "${1}" 2>/dev/null  -- bash -c "${@:2}"
 }
 
-main() {
+pod_info() {
   # create dict[cgroup-prober-node] = cgroup-prober-pod-name
   echo -e "${GREEN}Prober pods:${NC}"
   declare -A cgroupProber
@@ -65,5 +65,55 @@ main() {
   done < <(kubectl -n "${1}" get pods "${2}" -o json | jq '.status.containerStatuses[] | {name, containerID: .containerID | split("://")[1] }' | jq -sc .[])
 }
 
+# Define default values
+NAMESPACE="default"
+POD_LABELS=""
+POD_NAME=""
 
-main "${1}" "${2}"
+# Parse arguments
+while getopts ":n:l:" opt; do
+  case ${opt} in
+    n )
+      NAMESPACE=$OPTARG
+      ;;
+    l )
+      POD_LABELS=$OPTARG
+      ;;
+    \? )
+      echo "Invalid option: -$OPTARG" 1>&2
+      exit 1
+      ;;
+    : )
+      echo "Option -$OPTARG requires an argument." 1>&2
+      exit 1
+      ;;
+  esac
+done
+
+# Get the last argument, which should be the pod name
+shift $((OPTIND -1))
+POD_NAME=$1
+
+# Check if both pod name and labels were provided
+if [[ -n "$POD_NAME" && -n "$POD_LABELS" ]]; then
+  echo "Error: Please provide either a pod name or labels, but not both."
+  exit 1
+fi
+
+# Check if neither pod name nor labels were provided
+if [[ -z "$POD_NAME" && -z "$POD_LABELS" ]]; then
+  echo "Error: Please provide either a pod name or labels."
+  exit 1
+fi
+
+echo -e "${GREEN}Namespace:${NC} $NAMESPACE"
+echo -e "${GREEN}Labels:${NC} $POD_LABELS"
+echo -e "${GREEN}Pod Name:${NC} $POD_NAME"
+
+if [[ -z "$POD_LABELS" ]]; then
+  pod_info "${NAMESPACE}" "${POD_NAME}"
+else
+  for pod in $(kubectl -n "${NAMESPACE}" get pods -l "${POD_LABELS}" -o custom-columns=NAME:.metadata.name --no-headers); do
+    pod_info "${NAMESPACE}" "${pod}"
+  done
+fi
