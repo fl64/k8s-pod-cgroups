@@ -19,6 +19,9 @@ spec:
       labels:
         app: cgroup-prober
     spec:
+      # hostPID: true
+      # hostNetwork: true
+      # shareProcessNamespace: true
       terminationGracePeriodSeconds: 1
       tolerations:
       - operator: Exists
