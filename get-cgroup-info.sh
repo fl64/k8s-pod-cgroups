@@ -5,7 +5,7 @@
 
 PROBER_NS="cgroup-prober"
 PROBER_LABELS="app=cgroup-prober"
-CGROUP_PATTERN="cpu"
+
 
 PROCSYS_PATH="/host"
 #PROCSYS_PATH=""
@@ -73,7 +73,7 @@ echo_green "Discover containers cgroups for pod: ${2}, in namespace: ${1}, on no
 
       echo_green "      cgroup: ${cgroup}, path: ${path}."
       # cut path from cgroup than add 4 spaces before
-      proberExec "${proberPod}" "grep '' ${PROCSYS_PATH}/sys/fs/cgroup/${cgroup}${path}/* | rev | cut -d'/' -f1 | rev" | sed 's/^/        /' | grep "${CGROUP_PATTERN}"
+      proberExec "${proberPod}" "grep '' ${PROCSYS_PATH}/sys/fs/cgroup/${cgroup}${path}/* | rev | cut -d'/' -f1 | rev" | sed 's/^/        /' | grep "${CGROUP_NAME_FILTER}"
       #proberExec "${proberPod}" "grep '' ${PROCSYS_PATH}/sys/fs/cgroup/${cgroup}${path}/*" | sed 's/^/        /'
     done < <(echo "${processCgroups}")
 
@@ -81,13 +81,17 @@ echo_green "Discover containers cgroups for pod: ${2}, in namespace: ${1}, on no
 }
 
 # Define default values
+CGROUP_NAME_FILTER="cpu"
 NAMESPACE="default"
 POD_LABELS=""
 POD_NAME=""
 
 # Parse arguments
-while getopts ":n:l:" opt; do
+while getopts ":f:n:l:" opt; do
   case ${opt} in
+    f )
+      CGROUP_NAME_FILTER=$OPTARG
+      ;;
     n )
       NAMESPACE=$OPTARG
       ;;
@@ -124,6 +128,7 @@ fi
 echo_green "Namespace: $NAMESPACE"
 echo_green "Labels: $POD_LABELS"
 echo_green "Pod Name: $POD_NAME"
+echo_green "Cgroup name filter: $CGROUP_NAME_FILTER"
 
 if [[ -z "$POD_LABELS" ]]; then
   pod_info "${NAMESPACE}" "${POD_NAME}"
