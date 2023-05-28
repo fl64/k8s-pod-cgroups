@@ -14,6 +14,21 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
+echo_green() {
+  str=""
+  IFS=',' read -ra sentences <<< "${@}"
+  for s in "${sentences[@]}"; do
+    IFS=':' read -ra parts <<< "${s}"
+    first="${parts[0]}"
+    last="${parts[@]:1}"
+    str="${str}${GREEN}${first}:${NC}"
+    if [[ "${last}" != "" ]]; then
+      str="${str}${last}"
+    fi
+  done
+  echo -e "${str}"
+}
+
 proberExec() {
   # $1 - prober-pod-name
   # $@ - params
@@ -23,10 +38,10 @@ proberExec() {
 
 pod_info() {
   # create dict[cgroup-prober-node] = cgroup-prober-pod-name
-  echo -e "${GREEN}Prober pods:${NC}"
+  echo_green "Prober pods:"
   declare -A cgroupProber
   while IFS=' ' read -r podName nodeName; do
-      echo -e "  ${GREEN}pod:${NC} ${podName} ${GREEN}node:${NC} ${nodeName}"
+      echo_green "  pod: ${podName}. node: ${nodeName}."
       cgroupProber[$nodeName]="${podName}"
   done < <(kubectl -n "${PROBER_NS}" get pods -l "${PROBER_LABELS}" -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers)
   echo
@@ -35,18 +50,18 @@ pod_info() {
   # echo $podNodeName
   proberPod=${cgroupProber[${podNodeName}]}
 
-  echo -e "${GREEN}Discover containers cgroups for pod:${NC} ${2} ${GREEN}in namespace:${NC} ${1} ${GREEN}on node:${NC} ${podNodeName} ${GREEN}via pod:${NC} ${proberPod}"
+echo_green "Discover containers cgroups for pod: ${2}, in namespace: ${1}, on node: ${podNodeName}, via pod: ${proberPod}."
   while read container; do
 
     containerName=$(echo "${container}" | jq -r '.name')
     containerID=$(echo "${container}" | jq -r '.containerID')
-    echo -e "${GREEN}  Container:${NC} ${containerName}${GREEN}, containerd ID:${NC} ${containerID}"
+    echo_green "  Container: ${containerName}, containerd ID: ${containerID}."
 
     processPID=$(proberExec "${proberPod}" "crictl inspect ${containerID} | jq -r .info.pid")
-    echo -e "${GREEN}    Process PID:${NC} ${processPID}"
+    echo_green "    Process PID: ${processPID}"
 
     cgroupPath=$(proberExec "${proberPod}" "crictl inspect ${containerID} | jq -r .info.runtimeSpec.linux.cgroupsPath")
-    echo -e "${GREEN}    Process cgroupPath:${NC} ${cgroupPath}"
+    echo_green "    Process cgroupPath: ${cgroupPath}"
 
     processCgroups=$(proberExec "${proberPod}" "cat ${PROCSYS_PATH}/proc/${processPID}/cgroup ")
     echo "${processCgroups}" | sed 's/^/    - /'
@@ -56,7 +71,7 @@ pod_info() {
       # little hack to remove /../../.. in some cases
       echo $path | grep -q '/../../..' && path="${cgroupPath}"
 
-      echo -e "${GREEN}      cgroup:${NC} ${cgroup} ${GREEN}path:${NC} ${path}"
+      echo_green "      cgroup: ${cgroup}, path: ${path}."
       # cut path from cgroup than add 4 spaces before
       proberExec "${proberPod}" "grep '' ${PROCSYS_PATH}/sys/fs/cgroup/${cgroup}${path}/* | rev | cut -d'/' -f1 | rev" | sed 's/^/        /' | grep "${CGROUP_PATTERN}"
       #proberExec "${proberPod}" "grep '' ${PROCSYS_PATH}/sys/fs/cgroup/${cgroup}${path}/*" | sed 's/^/        /'
@@ -106,9 +121,9 @@ if [[ -z "$POD_NAME" && -z "$POD_LABELS" ]]; then
   exit 1
 fi
 
-echo -e "${GREEN}Namespace:${NC} $NAMESPACE"
-echo -e "${GREEN}Labels:${NC} $POD_LABELS"
-echo -e "${GREEN}Pod Name:${NC} $POD_NAME"
+echo_green "Namespace: $NAMESPACE"
+echo_green "Labels: $POD_LABELS"
+echo_green "Pod Name: $POD_NAME"
 
 if [[ -z "$POD_LABELS" ]]; then
   pod_info "${NAMESPACE}" "${POD_NAME}"
