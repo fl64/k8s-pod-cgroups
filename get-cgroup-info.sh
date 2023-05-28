@@ -14,6 +14,7 @@ RED='\033[0;31m'
 GREEN='\033[0;32m'
 NC='\033[0m' # No Color
 
+# The function splits the string into sentences (separated by a dot). Everything before the ":" sign is colored green, the rest is the standard color.
 echo_green() {
   str=""
   IFS=',' read -ra sentences <<< "${@}"
@@ -50,7 +51,7 @@ pod_info() {
   # echo $podNodeName
   proberPod=${cgroupProber[${podNodeName}]}
 
-echo_green "Discover containers cgroups for pod: ${2}, in namespace: ${1}, on node: ${podNodeName}, via pod: ${proberPod}."
+echo_green "Detecting cgroups for pod containers: ${2}, in namespace: ${1}, on node: ${podNodeName}, via pod: ${proberPod}."
   while read container; do
 
     containerName=$(echo "${container}" | jq -r '.name')
