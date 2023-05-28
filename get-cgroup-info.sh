@@ -18,35 +18,40 @@ proberExec() {
   kubectl -n "${PROBER_NS}" exec "${1}" 2>/dev/null  -- bash -c "${@:2}"
 }
 
-# create dict[cgroup-prober-node] = cgroup-prober-pod-name
-echo -e "${GREEN}Prober pods:${NC}"
-declare -A cgroupProber
-while IFS=' ' read -r podName nodeName; do
-    echo -e "  ${GREEN}pod:${NC} ${podName} ${GREEN}node:${NC} ${nodeName}"
-    cgroupProber[$nodeName]="${podName}"
-done < <(kubectl -n "${PROBER_NS}" get pods -l "${PROBER_LABELS}" -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers)
-echo
+main() {
+  # create dict[cgroup-prober-node] = cgroup-prober-pod-name
+  echo -e "${GREEN}Prober pods:${NC}"
+  declare -A cgroupProber
+  while IFS=' ' read -r podName nodeName; do
+      echo -e "  ${GREEN}pod:${NC} ${podName} ${GREEN}node:${NC} ${nodeName}"
+      cgroupProber[$nodeName]="${podName}"
+  done < <(kubectl -n "${PROBER_NS}" get pods -l "${PROBER_LABELS}" -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName --no-headers)
+  echo
 
-podNodeName=$(kubectl -n "${1}" get pod "${2}" -o json | jq -r '.spec.nodeName')
-proberPod=${cgroupProber[${podNodeName}]}
+  podNodeName=$(kubectl -n "${1}" get pod "${2}" -o json | jq -r '.spec.nodeName')
+  proberPod=${cgroupProber[${podNodeName}]}
 
-echo -e "${GREEN}Discover containers cgroups for pod:${NC} ${2} ${GREEN}in namespace:${NC} ${1} ${GREEN}on node:${NC} ${podNodeName} ${GREEN}via pod:${NC} ${proberPod}"
-while read container; do
+  echo -e "${GREEN}Discover containers cgroups for pod:${NC} ${2} ${GREEN}in namespace:${NC} ${1} ${GREEN}on node:${NC} ${podNodeName} ${GREEN}via pod:${NC} ${proberPod}"
+  while read container; do
 
-  containerName=$(echo "${container}" | jq -r '.name')
-  containerID=$(echo "${container}" | jq -r '.containerID')
-  echo -e "${GREEN}  Container:${NC} ${containerName}${GREEN}, containerd ID:${NC} ${containerID}"
+    containerName=$(echo "${container}" | jq -r '.name')
+    containerID=$(echo "${container}" | jq -r '.containerID')
+    echo -e "${GREEN}  Container:${NC} ${containerName}${GREEN}, containerd ID:${NC} ${containerID}"
 
-  processPID=$(proberExec "${proberPod}" "crictl inspect ${containerID} | jq .info.pid")
-  echo -e "${GREEN}    Process PID:${NC} ${processPID}"
+    processPID=$(proberExec "${proberPod}" "crictl inspect ${containerID} | jq .info.pid")
+    echo -e "${GREEN}    Process PID:${NC} ${processPID}"
 
-  processCgroups=$(proberExec "${proberPod}" "cat /host/proc/${processPID}/cgroup | grep ${CGROUP_PATTERN}")
-  #echo "Process CGroups: ${processCgroups}"
+    processCgroups=$(proberExec "${proberPod}" "cat /host/proc/${processPID}/cgroup ")
+    # echo "Process CGroups: ${processCgroups}"
 
-  while IFS=':' read -r _ cgroup path; do
-    echo -e "${GREEN}      cgroup:${NC} ${cgroup} ${GREEN}path:${NC} ${path}"
-    # cur path from cgroup than add 4 spaces before
-    proberExec "${proberPod}" "grep '' /host/sys/fs/cgroup/${cgroup}${path}/* | rev | cut -d'/' -f1 | rev" | sed 's/^/        /' | grep -v cpuacct
-  done < <(echo "${processCgroups}")
+    while IFS=':' read -r _ cgroup path; do
+      echo -e "${GREEN}      cgroup:${NC} ${cgroup} ${GREEN}path:${NC} ${path}"
+      # cur path from cgroup than add 4 spaces before
+      proberExec "${proberPod}" "grep '' /host/sys/fs/cgroup/${cgroup}${path}/* | rev | cut -d'/' -f1 | rev" | sed 's/^/        /' | grep -v cpuacct
+    done < <(echo "${processCgroups}")
 
-done < <(kubectl -n "${1}" get pods "${2}" -o json | jq '.status.containerStatuses[] | {name, containerID: .containerID | split("://")[1] }' | jq -sc .[])
+  done < <(kubectl -n "${1}" get pods "${2}" -o json | jq '.status.containerStatuses[] | {name, containerID: .containerID | split("://")[1] }' | jq -sc .[])
+}
+
+
+main "${1}" "${2}"
